@@ -1,0 +1,4 @@
+<launch>
+    <rosparam command="load" file="$(find controller)/config/purepursuit.yaml" />
+    <node pkg="controller" type="purepursuit_node" name="purepursuit" output="screen" />
+</launch>
