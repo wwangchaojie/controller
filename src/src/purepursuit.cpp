@@ -178,6 +178,9 @@ Eigen::Vector2d PurePursuit::PositionPID_VxVy(Eigen::Vector2d current_pos, Eigen
     Eigen::Vector2d pos_error_ = target_pos - current_pos;
     // I
     integral_xy_error_ += pos_error_;
+    // 添加积分限幅防止windup
+    Eigen::Vector2d integral_max(0.5, 0.5); // XY积分上限
+    integral_xy_error_ = integral_xy_error_.cwiseMin(integral_max).cwiseMax(-integral_max);
     // D
     ros::Time current_time = ros::Time::now();
     double dt_ = (current_time - last_time_).toSec();

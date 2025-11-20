@@ -10,6 +10,14 @@ project(controller)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
+  sensor_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  tf2_sensor_msgs
+  pcl_ros
+  pcl_conversions
   std_msgs
   yhs_can_msgs
 )
@@ -117,7 +125,7 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-  # include/yhs_can_msgs
+  yhs_can_msgs
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -207,5 +215,10 @@ include_directories(
 # catkin_add_nosetests(test)
 add_executable(purepursuit_node src/purepursuit.cpp)
 target_link_libraries(purepursuit_node
+  ${catkin_LIBRARIES}
+)
+
+add_executable(obstacle_detect_node src/obstacle_detect.cpp)
+target_link_libraries(obstacle_detect_node
   ${catkin_LIBRARIES}
 )
