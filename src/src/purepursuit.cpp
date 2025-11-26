@@ -6,6 +6,7 @@
 #include <Eigen/Eigen>
 #include <nav_msgs/Path.h>
 #include "yhs_can_msgs/ctrl_cmd.h"
+#include <std_msgs/Bool.h>
 
 
 
@@ -21,11 +22,13 @@ private:
     ros::NodeHandle nh_;
     ros::Subscriber sub_odom_;
     ros::Subscriber sub_path_;
+    ros::Subscriber stop_flag_sub_;
     ros::Publisher pub_cmd_;
 
     std::string odom_topic_;
     std::string path_topic_;
     std::string cmd_vel_topic_;
+    std::string stop_flag_topic_;
 
     Eigen::Vector2d vehiclePos_;
     Eigen::Quaterniond vehicleQuat_;
@@ -53,12 +56,13 @@ private:
     int count;
 
 
-
+    bool is_need_stop_ = false;
 
 
     void param_init(ros::NodeHandle nh_);
     void odomCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
     void pathCallback(const nav_msgs::Path::ConstPtr& msg);
+    void stopFlagCallBack(const std_msgs::Bool::ConstPtr& msg);
     double PositionPID_V(Eigen::Vector2d current_pos, Eigen::Vector2d target_pos);
     Eigen::Vector2d PositionPID_VxVy(Eigen::Vector2d current_pos, Eigen::Vector2d target_pos, double kp, double kd, double ki, double dt);
     double YawPID(Eigen::Vector2d current_pos, Eigen::Vector2d target_pos, double vehicleYaw);
@@ -82,7 +86,7 @@ PurePursuit::PurePursuit(ros::NodeHandle nh, ros::NodeHandle nhPrivate) : nh_(nh
     param_init(nh_);
     sub_odom_ = nh_.subscribe<geometry_msgs::PoseStamped>(odom_topic_, 1, &PurePursuit::odomCallback, this);
     sub_path_ = nh_.subscribe<nav_msgs::Path>(path_topic_, 1, &PurePursuit::pathCallback, this);
-    //TODO: 消息类型
+    stop_flag_sub_ = nh_.subscribe<std_msgs::Bool>(stop_flag_topic_, 1, &PurePursuit::stopFlagCallBack, this);
     pub_cmd_ = nh_.advertise<yhs_can_msgs::ctrl_cmd>(cmd_vel_topic_, 1);
     
 }
@@ -93,6 +97,7 @@ void PurePursuit::param_init(ros::NodeHandle nh_)
     nh_.param("purepursuit_node/lookahead_distance", lookahead_distance_, 0.1);
     nh_.param("purepursuit_node/odom_topic", odom_topic_, std::string("/mavros/vision_pose/pose"));
     nh_.param("purepursuit_node/path_topic", path_topic_, std::string("/astar_path_o"));
+    nh_.param("purepursuit_node/stop_flag_topic", stop_flag_topic_, std::string("/stop_flag"));
     // nh_.param("purepursuit_node/cmd_vel_topic", cmd_vel_topic_, std::string("/cmd_vel"));
     nh_.param("purepursuit_node/cmd_vel_topic", cmd_vel_topic_, std::string("/ctrl_cmd"));
     nh_.param("purepursuit_node/vehicle_max_speed", vehicle_max_speed_, 1.0);
@@ -121,6 +126,11 @@ void PurePursuit::pathCallback(const nav_msgs::Path::ConstPtr& msg)
     path_ = *msg;
     index = 0;
     ROS_INFO("path size: %ld", path_.poses.size());
+}
+
+void PurePursuit::stopFlagCallBack(const std_msgs::Bool::ConstPtr& msg)
+{
+    is_need_stop_ = msg->data;
 }
 
 double PurePursuit::PositionPID_V(Eigen::Vector2d current_pos, Eigen::Vector2d target_pos)
@@ -216,6 +226,24 @@ double PurePursuit::getTheta(double ref_theta, double vehicleYaw, int &vehicle_i
 
 
 void PurePursuit::PurePursuitbyVel(){
+    ros::Rate detect_stop_rate(50);
+    // 先处理障碍物停止逻辑
+    if(is_need_stop_) 
+    {
+        while(is_need_stop_)
+        {
+            // 停止1秒内，保持速度为0
+            yhs_cmd_vel.ctrl_cmd_gear = 8;
+            yhs_cmd_vel.ctrl_cmd_x_linear = 0.0;
+            yhs_cmd_vel.ctrl_cmd_y_linear = 0.0;
+            pub_cmd_.publish(yhs_cmd_vel);
+            detect_stop_rate.sleep();
+            // return;  // 直接返回，不执行路径跟踪
+        }
+        ros::Duration(2.0).sleep();
+    } 
+
+    // 继续执行原来的逻辑
     change_path_ = false;
     if(path_.poses.empty())
     {

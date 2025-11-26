@@ -68,5 +68,13 @@
         "variant": "cpp",
         "core": "cpp",
         "eigen": "cpp"
-    }
+    },
+    "python.autoComplete.extraPaths": [
+        "/home/cj/TaiCang/yhs底盘/fw-mid pro导航中间件/01_ros通讯协议解析包/FW-mid pro-ros1-V1.1.0/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/cj/TaiCang/yhs底盘/fw-mid pro导航中间件/01_ros通讯协议解析包/FW-mid pro-ros1-V1.1.0/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ]
 }

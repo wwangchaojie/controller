@@ -126,6 +126,7 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
   yhs_can_msgs
+  include
   ${catkin_INCLUDE_DIRS}
 )
 

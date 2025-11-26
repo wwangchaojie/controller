@@ -1,4 +1,8 @@
 <launch>
     <rosparam command="load" file="$(find controller)/config/purepursuit.yaml" />
     <node pkg="controller" type="purepursuit_node" name="purepursuit" output="screen" />
+    <node pkg="controller" type="obstacle_detect_node" name="obstacle_detect" output="screen" >
+        <rosparam command="load" file="$(find controller)/config/obstacle_detect.yaml" />
+    </node>
+
 </launch>

@@ -3,5 +3,6 @@ purepursuit_node:
   odom_topic: "/mavros/vision_pose/pose"
   path_topic: "/astar_path_o"
   cmd_vel_topic: "/ctrl_cmd"
+  stop_flag_topic: "/stop_flag"
   vehicle_max_speed: 1.0
 
