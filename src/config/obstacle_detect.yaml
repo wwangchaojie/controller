@@ -1,9 +1,9 @@
 # config/obstacle_detect.yaml
 obstacle_detect:            # 节点命名空间
-  square_size: 0.4          #检测范围
+  square_size: 0.3          #检测范围
   vehicle_length: 0.68
   vehicle_width: 0.55
   safety_margin: 0.1        #从车周围多少距离开始检测障碍物
-  obstacle_threshold: 10    #障碍物检测阈值（点云数量）
+  obstacle_threshold: 30    #障碍物检测阈值（点云数量）
   height_min: 0.3
   height_max: 1.0
