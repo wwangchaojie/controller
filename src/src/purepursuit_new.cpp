@@ -41,7 +41,6 @@ private:
     ros::Subscriber sub_safe_;
     ros::Subscriber sub_start_;
     ros::Subscriber sub_double_car_;
-    ros::Subscriber sub_zhu_mode_;
 
 
     ros::Publisher pub_cmd_;
@@ -54,7 +53,6 @@ private:
     ros::Publisher pub_start_;
     ros::Publisher pub_arrive_;
     ros::Publisher pub_arrive_double_;
-    ros::Publisher pub_detect_car_;
 
 
 
@@ -108,9 +106,6 @@ private:
     bool odom_received_ = false;
     bool is_stopping_ = false;
     bool is_adjusting_ = false;
-
-    bool zhu_mode_ = false;
-    bool zhu_detect_ = false;
 
     double yaw_error_integral_ = 0.0;     //yaw角误差积分项
     double yaw_previous_error_ = 0.0;
@@ -196,7 +191,6 @@ private:
     void publishStopCommand();
     void startCallback(const std_msgs::Bool::ConstPtr& msg);
     void doubleCarCallback(const std_msgs::Bool::ConstPtr& msg);
-    void zhuModeCallback(const std_msgs::Bool::ConstPtr& msg);
 
 
 
@@ -213,7 +207,6 @@ public:
     double getYawFromQuaternion(const geometry_msgs::Quaternion& quat);
     void adjustYawAngle(double yaw_error);
     double PID_adjustYaw(double error);
-    void which_car_detect();
     void FSM();
     bool double_car_ = false;
     bool end_goal_pose_ = false;
@@ -244,7 +237,6 @@ PurePursuit::PurePursuit(ros::NodeHandle nh, ros::NodeHandle nhPrivate) : nh_(nh
     sub_yaw_correct_complete_ = nh_.subscribe<std_msgs::Bool>("/car2/yaw_correct_complete", 1, &PurePursuit::otherCarYaw_completeCallback, this);
     sub_newodom_ = nh_.subscribe<nav_msgs::Odometry>(odom_topic_, 1, &PurePursuit::rob_odomCallback, this);
     sub_endtarget_ = nh_.subscribe<geometry_msgs::PoseArray>("/target_poses", 1, &PurePursuit::targetPoseCallback, this);
-    sub_zhu_mode_ = nh_.subscribe<std_msgs::Bool>("/zhu_mode", 1, &PurePursuit::zhuModeCallback, this);
 
 
     pub_cmd_ = nh_.advertise<yhs_can_msgs::ctrl_cmd>(cmd_vel_topic_, 1);
@@ -261,8 +253,7 @@ PurePursuit::PurePursuit(ros::NodeHandle nh, ros::NodeHandle nhPrivate) : nh_(nh
     pub_arrive_double_ = nh_.advertise<std_msgs::Bool>("/point_arrived" ,1);
     pub_endpos_ = nh_.advertise<geometry_msgs::PoseStamped>("/target_pos", 1, true); 
 
-    pub_detect_car_ = nh_.advertise<std_msgs::Bool>("/zhu_detect",1);
-    
+
     
     
     
@@ -338,6 +329,8 @@ void PurePursuit::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 
 void PurePursuit::pathCallback(const nav_msgs::Path::ConstPtr& msg)
 {
+    first_yaw_ = true;
+    first_pos_ = true;
     path_.poses.clear();
     path_ = *msg;
     if (!path_.poses.empty()) {
@@ -457,10 +450,7 @@ void PurePursuit::doubleCarCallback(const std_msgs::Bool::ConstPtr& msg)
     sub_path_ = nh_.subscribe<nav_msgs::Path>(path_topic_new, 1, &PurePursuit::pathCallback, this);
 }
 
-void PurePursuit::zhuModeCallback(const std_msgs::Bool::ConstPtr& msg)
-{
-    zhu_mode_ = msg->data;
-}
+
 
 
 // bug: 在横移时，yaw角已经没有了参考意义
@@ -847,8 +837,8 @@ void PurePursuit::PurePursuitbyVel(){
     ROS_INFO("find PurePursuit");
 
     dis_end_to_me = (vehiclePos_ - Eigen::Vector2d(path_.poses.back().pose.position.x, path_.poses.back().pose.position.y)).norm();
-    // if(dis_end_to_me < 0.03)
-    if(dis_end_to_me < 0.01)
+    if(dis_end_to_me < 0.03)
+    // if(dis_end_to_me < 0.01)
     {
         ROS_INFO("arrive at end");
         if(++count >= 1){
@@ -1026,6 +1016,53 @@ void PurePursuit::rob_odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
     ROS_WARN("rob_odom Update");
 }
 
+// void PurePursuit::targetPoseCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
+// {
+//     // lfhTODO:这里需要判断一下取数组中的哪个点
+//     if(end_goal_pose_  && !get_target_){
+//         if(msg->poses.size() == 0) return;
+//         if(path_.poses.empty()) return;
+//         int end_index = -1;
+
+//         float min_dis = 5.0;
+
+//         for(int i = 0; i < msg->poses.size(); i++){
+//             Eigen::Vector2d pos(msg->poses[i].position.x, msg->poses[i].position.y);
+//             Eigen::Vector2d end_pos(path_.poses.back().pose.position.x, path_.poses.back().pose.position.y);    
+//             double dis = (end_pos - pos).norm();
+//             if(dis < 4.0){
+//                 if(dis < min_dis){
+//                     min_dis = dis;
+//                     end_index = i;
+//                 }
+//             }
+//         }
+
+//         if(end_index != -1){
+//             if(++traget_count_ == 10){
+//                 if(end_index < 3){
+//                     targetPos_ << msg->poses[end_index].position.x - chelength * cos(tf2::getYaw(msg->poses[end_index].orientation)), 
+//                                 msg->poses[end_index].position.y - chelength * sin(tf2::getYaw(msg->poses[end_index].orientation));
+//                 }else if(end_index == 3 || end_index == 4 ){
+//                     targetPos_ << msg->poses[end_index].position.x + chelength * cos(tf2::getYaw(msg->poses[end_index].orientation)), 
+//                                 msg->poses[end_index].position.y + chelength * sin(tf2::getYaw(msg->poses[end_index].orientation));
+//                 } 
+//                 geometry_msgs::PoseStamped target_pos;
+//                 target_pos.header.stamp = ros::Time::now();
+//                 target_pos.header.frame_id = "map";
+//                 target_pos.pose.position.x = targetPos_(0);
+//                 target_pos.pose.position.y = targetPos_(1);
+//                 pub_endpos_.publish(target_pos);
+
+//                 targetYaw_ = tf2::getYaw(msg->poses[end_index].orientation);
+//                 get_target_ = true;
+//             }
+//             ROS_ERROR("traget_count_: %ld", traget_count_);
+//         } 
+//     }
+// }
+
+
 void PurePursuit::targetPoseCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
 {
     // lfhTODO:这里需要判断一下取数组中的哪个点
@@ -1034,29 +1071,38 @@ void PurePursuit::targetPoseCallback(const geometry_msgs::PoseArray::ConstPtr& m
         if(path_.poses.empty()) return;
         int end_index = -1;
 
-        float min_dis = 5.0;
+        float min_dis = 10.0;
 
         for(int i = 0; i < msg->poses.size(); i++){
             Eigen::Vector2d pos(msg->poses[i].position.x, msg->poses[i].position.y);
             Eigen::Vector2d end_pos(path_.poses.back().pose.position.x, path_.poses.back().pose.position.y);    
             double dis = (end_pos - pos).norm();
-            if(dis < 4.0){
-                if(dis < min_dis){
-                    min_dis = dis;
-                    end_index = i;
-                }
+            if(dis < min_dis){
+                min_dis = dis;
+                end_index = i;
             }
         }
 
         if(end_index != -1){
             if(++traget_count_ == 10){
-                if(end_index < 3){
-                    targetPos_ << msg->poses[end_index].position.x - chelength * cos(tf2::getYaw(msg->poses[end_index].orientation)), 
-                                msg->poses[end_index].position.y - chelength * sin(tf2::getYaw(msg->poses[end_index].orientation));
-                }else if(end_index == 3 || end_index == 4 ){
-                    targetPos_ << msg->poses[end_index].position.x + chelength * cos(tf2::getYaw(msg->poses[end_index].orientation)), 
-                                msg->poses[end_index].position.y + chelength * sin(tf2::getYaw(msg->poses[end_index].orientation));
-                } 
+
+                double _targte_x = path_.poses.back().pose.position.x;
+                double _targte_y = path_.poses.back().pose.position.y;
+                double _target_yaw = tf2::getYaw(path_.poses.back().pose.orientation);
+                
+                targetPos_ << msg->poses[end_index].position.x, 
+                              msg->poses[end_index].position.y;
+
+                //// 求 _targte_x, _targte_y 到 _target_yaw 和  targetPos_ 直线的垂足坐标
+                double A = sin(_target_yaw);
+                double B = cos(_target_yaw);
+                double C = -A * targetPos_(0) - B * targetPos_(1);
+                double D = A * _targte_x + B * _targte_y + C;
+                double foot_x = _targte_x - A * D ;
+                double foot_y = _targte_y - B * D ;
+
+                targetPos_ << foot_x, foot_y;
+
                 geometry_msgs::PoseStamped target_pos;
                 target_pos.header.stamp = ros::Time::now();
                 target_pos.header.frame_id = "map";
@@ -1064,14 +1110,13 @@ void PurePursuit::targetPoseCallback(const geometry_msgs::PoseArray::ConstPtr& m
                 target_pos.pose.position.y = targetPos_(1);
                 pub_endpos_.publish(target_pos);
 
-                targetYaw_ = tf2::getYaw(msg->poses[end_index].orientation);
+                targetYaw_ = _target_yaw;
                 get_target_ = true;
             }
-            ROS_ERROR("traget_count_: %ld", traget_count_);
+
         } 
     }
 }
-
 
 
 void PurePursuit::goalyaw(){
@@ -1093,16 +1138,19 @@ void PurePursuit::goalyaw(){
     //     pub_cmd_.publish(yhs_cmd_vel);
     // }
 
-    while(end_pos_error > 0.01 && end_cout_ <= 4){
+    while(end_pos_error > 0.008 && end_cout_ <= 4){
         ros::spinOnce();
         AdjustPos(targetPos_ - vehicleendPos_);
     }
+
     ROS_INFO("end_cout_1: %ld",end_cout_);
-    if(abs(end_yaw_error) > 2 * M_PI / 180 && end_cout_ > 3){
+    if(abs(end_yaw_error) > 0.36 * M_PI / 180 && end_cout_ > 3){
+    // if(abs(end_yaw_error) > 0.2 * M_PI / 180){
         ros::spinOnce();
         AdjustYaw(end_yaw_error);
         ROS_INFO("end_yaw_error: %f",end_yaw_error);
-    }else if(abs(end_yaw_error) < 2 * M_PI / 180 && end_cout_ > 3){
+    }else if(abs(end_yaw_error) < 0.36 * M_PI / 180 && end_cout_ > 3){
+    // }else if(abs(end_yaw_error) < 0.2 * M_PI / 180 ){
         end_goal_pose_ = false;
         get_target_ = false;
         yhs_can_msgs::ctrl_cmd yhs_cmd_vel;
@@ -1145,18 +1193,26 @@ void PurePursuit::AdjustYaw(double end_yaw_error){
 
 
 void PurePursuit::AdjustPos(Eigen::Vector2d end_pos_error){
+
+    static double diaoyong_time = ros::Time::now().toSec();
+
     if(first_pos_){
         first_yaw_ = true;
         first_pos_ = false;
-        yhs_can_msgs::ctrl_cmd yhs_cmd_vel;
-        yhs_cmd_vel.ctrl_cmd_gear = 8;
-        yhs_cmd_vel.ctrl_cmd_x_linear = 0.0;
-        yhs_cmd_vel.ctrl_cmd_y_linear = 0.0;
-        pub_cmd_.publish(yhs_cmd_vel);
-        ros::Rate rate(10);
+        // yhs_can_msgs::ctrl_cmd yhs_cmd_vel;
+        // yhs_cmd_vel.ctrl_cmd_gear = 8;
+        // yhs_cmd_vel.ctrl_cmd_x_linear = 0.0;
+        // yhs_cmd_vel.ctrl_cmd_y_linear = 0.0;
+        // pub_cmd_.publish(yhs_cmd_vel);
+        yhs_cmd_vel2_.ctrl_cmd_gear = 7;
+        yhs_cmd_vel2_.steering_ctrl_cmd_velocity = 0.0;
+        yhs_cmd_vel2_.steering_ctrl_cmd_steering = 0.0;
+        pub_yhs_cmd_.publish(yhs_cmd_vel2_);
+        diaoyong_time = ros::Time::now().toSec();
         return;
     }
-    if(end_pos_error.norm()<0.03){
+
+    if(end_pos_error.norm()<0.005){
         end_cout_++;
     }else{
         end_cout_ = 0;
@@ -1177,15 +1233,27 @@ void PurePursuit::AdjustPos(Eigen::Vector2d end_pos_error){
         }else if(abs(vx_vy(1)) < vehicle_min_speed_){
             vx_vy(1) = 0.0;
         }
-        yhs_can_msgs::ctrl_cmd yhs_cmd_vel;
-        yhs_cmd_vel.ctrl_cmd_gear = 8;
-        yhs_cmd_vel.ctrl_cmd_x_linear = vx_vy(0);
-        yhs_cmd_vel.ctrl_cmd_y_linear = vx_vy(1);
-        pub_cmd_.publish(yhs_cmd_vel);
 
+        double yaw_speed = atan2(vx_vy(1),vx_vy(0));
+        double speed = vx_vy.norm();
+
+
+        // yhs_can_msgs::ctrl_cmd yhs_cmd_vel;
+        // yhs_cmd_vel.ctrl_cmd_gear = 8;
+        // yhs_cmd_vel.ctrl_cmd_x_linear = vx_vy(0);
+        // yhs_cmd_vel.ctrl_cmd_y_linear = vx_vy(1);
+
+        yhs_cmd_vel2_.ctrl_cmd_gear = 7;
+        yhs_cmd_vel2_.steering_ctrl_cmd_steering = yaw_speed * 180 /M_PI;
+        yhs_cmd_vel2_.steering_ctrl_cmd_velocity = speed;
+        
+        if(ros::Time::now().toSec() - diaoyong_time < 1.0){
+            yhs_cmd_vel2_.steering_ctrl_cmd_velocity = 0;
+        }   
+
+        pub_yhs_cmd_.publish(yhs_cmd_vel2_);
+        // pub_cmd_.publish(yhs_cmd_vel);
     }
-
-
 }
 
 double PurePursuit::yaw_PID(double yaw_error)
@@ -1233,24 +1301,9 @@ Eigen::Vector2d PurePursuit::pos_PID(Eigen::Vector2d pos_error)
     end_pos_error_xy_last_ = pos_error_;
     
     // total
-    Eigen::Vector2d pos_vel_ = end_pos_kp_ * pos_error_ + end_pos_ki_ * integral_end_xy_error_ + end_pos_kd_ * pos_error_dot_;
+    Eigen::Vector2d pos_vel_ = 2.0 * pos_error_ + 0.005 * integral_end_xy_error_ + 0.08 * pos_error_dot_;
     // std::cout << "pos_vel_: " << pos_vel_(0) << " " << pos_vel_(1) << std::endl;
     return pos_vel_;
-}
-void PurePursuit::which_car_detect(){
-    // 双车模式，主车判断
-    if(double_car_ && zhu_mode_){
-        zhu_detect_ = true;
-    }
-    // 双车模式，从车判断
-    else if(double_car_ && !zhu_mode_){
-        zhu_detect_ = false;
-    }
-
-    std_msgs::Bool zhu_detect_msg;
-    zhu_detect_msg.data = zhu_detect_;
-    pub_detect_car_.publish(zhu_detect_msg);
-    ROS_WARN("zhu_detect_: %d", zhu_detect_);
 }
 
 
@@ -1269,16 +1322,14 @@ int main(int argc, char **argv)
         std_msgs::Bool double_car_state_msg;
         double_car_state_msg.data = pure_pursuit.double_car_;
         pub_double_car_state.publish(double_car_state_msg);
-        pure_pursuit.which_car_detect();
         // pure_pursuit.PurePursuitbyVel();
-        if((pure_pursuit.end_goal_pose_ && pure_pursuit.get_target_)
-            && ((!double_car_) || (double_car_ && zhu_detect_))){
+        if(pure_pursuit.end_goal_pose_ && pure_pursuit.get_target_){
             ROS_WARN("end_adjust");
             pure_pursuit.goalyaw();
             pure_pursuit.path_.poses.clear();
 
         }else if(!pure_pursuit.end_goal_pose_){
-            pure_pursuit.FSM();
+        pure_pursuit.FSM();
         }
         looprate.sleep();
     }
